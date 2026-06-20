@@ -46,9 +46,9 @@
       <label for="date">Date</label>
       <input type="date" id="date">
 
-      <label for="food">Food</label>
-      <select id="food">
-        <!-- Options populated by JS -->
+      <label for="foodSelect">Food</label>
+      <select id="foodSelect">
+        <option value="">Select a food…</option>
       </select>
 
       <label for="amount">Amount</label>
@@ -93,25 +93,20 @@
             <th></th>
           </tr>
         </thead>
-        <tbody>
-          <!-- Rows added by JS -->
-        </tbody>
+        <tbody></tbody>
       </table>
     </div>
 
     <div class="flex-1">
       <h2 style="font-size:1.1rem;margin-top:0;">Daily Progress</h2>
       <div id="summary" class="small" style="margin-bottom:0.5rem;"></div>
-
       <div id="metricsBars"></div>
     </div>
   </div>
 </div>
 
 <script>
-  // --- Sample Food Database ---
-  // Values per unit (see 'unit' field). You can extend this list.
-  // For simplicity, vitamins is not broken down; you could add it as another metric.
+  // ---------------- FOOD DATABASE ----------------
   const FOOD_DB = [
     {
       name: "Apple (medium)",
@@ -214,7 +209,7 @@
     }
   ];
 
-  // --- Daily Targets (adjust if you want) ---
+  // ---------------- DAILY TARGETS ----------------
   const DAILY_TARGETS = {
     calories: 2000,
     protein: 100,
@@ -230,4 +225,208 @@
     { key: "protein",  label: "Protein (g)" },
     { key: "carbs",    label: "Carbs (g)" },
     { key: "fibre",    label: "Fibre (g)" },
-    { key: "su
+    { key: "sugar",    label: "Sugar (g)" },
+    { key: "goodFat",  label: "Good fats (g)" },
+    { key: "badFat",   label: "Bad fats (g)" }
+  ];
+
+  // Run after DOM is ready
+  window.addEventListener("DOMContentLoaded", () => {
+    const dateInput   = document.getElementById("date");
+    const foodSelect  = document.getElementById("foodSelect");
+    const amountInput = document.getElementById("amount");
+    const unitLabel   = document.getElementById("unitLabel");
+    const addBtn      = document.getElementById("addBtn");
+    const clearBtn    = document.getElementById("clearBtn");
+    const entriesTBody= document.querySelector("#entriesTable tbody");
+    const summaryDiv  = document.getElementById("summary");
+    const metricsBars = document.getElementById("metricsBars");
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    dateInput.value = todayStr;
+
+    // Populate dropdown
+    FOOD_DB.forEach((f, idx) => {
+      const opt = document.createElement("option");
+      opt.value = idx;
+      opt.textContent = f.name;
+      foodSelect.appendChild(opt);
+    });
+
+    function getSelectedFood() {
+      const idx = parseInt(foodSelect.value, 10);
+      if (isNaN(idx)) return null;
+      return FOOD_DB[idx];
+    }
+
+    function updateUnitLabel() {
+      const food = getSelectedFood();
+      unitLabel.textContent = food ? `Per ${food.unit}. Amount = how many ${food.unit}s.` : "";
+    }
+    updateUnitLabel();
+    foodSelect.addEventListener("change", updateUnitLabel);
+
+    // Local storage helpers
+    function loadAllData() {
+      return JSON.parse(localStorage.getItem("smartFoodDiary") || "{}");
+    }
+    function saveAllData(data) {
+      localStorage.setItem("smartFoodDiary", JSON.stringify(data));
+    }
+    function getCurrentDate() {
+      return dateInput.value || todayStr;
+    }
+    function loadEntriesForDate(dateStr) {
+      const all = loadAllData();
+      return all[dateStr] || [];
+    }
+    function saveEntriesForDate(dateStr, entries) {
+      const all = loadAllData();
+      all[dateStr] = entries;
+      saveAllData(all);
+    }
+
+    function renderBars(totals) {
+      metricsBars.innerHTML = "";
+      METRICS_CONFIG.forEach(m => {
+        const total = totals[m.key] || 0;
+        const target = DAILY_TARGETS[m.key];
+        const pct = target > 0 ? (total / target) * 100 : 0;
+
+        const row = document.createElement("div");
+        row.className = "metric-row";
+
+        const label = document.createElement("div");
+        label.className = "metric-label";
+        label.innerHTML = `
+          <span>${m.label}</span>
+          <span>${total.toFixed(1)} / ${target}${m.key === "calories" ? " kcal" : " g"} (${pct.toFixed(0)}%)</span>
+        `;
+
+        const barBg = document.createElement("div");
+        barBg.className = "bar-bg";
+
+        const barFill = document.createElement("div");
+        barFill.className = "bar-fill";
+        const width = Math.min(pct, 130);
+        barFill.style.width = width + "%";
+
+        let color = "#4caf50";
+        if (pct >= 90 && pct <= 100) color = "#ff9800";
+        if (pct > 100) color = "#f44336";
+        barFill.style.backgroundColor = color;
+
+        barBg.appendChild(barFill);
+        row.appendChild(label);
+        row.appendChild(barBg);
+        metricsBars.appendChild(row);
+      });
+    }
+
+    function renderEntries() {
+      const dateStr = getCurrentDate();
+      const entries = loadEntriesForDate(dateStr);
+      entriesTBody.innerHTML = "";
+
+      let totals = {
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fibre: 0,
+        sugar: 0,
+        goodFat: 0,
+        badFat: 0
+      };
+
+      entries.forEach((e, i) => {
+        const tr = document.createElement("tr");
+        function td(text) {
+          const c = document.createElement("td");
+          c.textContent = text;
+          return c;
+        }
+        tr.appendChild(td(e.name));
+        tr.appendChild(td(e.amount + " " + e.unit));
+        tr.appendChild(td(e.calories.toFixed(0)));
+        tr.appendChild(td(e.protein.toFixed(1)));
+        tr.appendChild(td(e.carbs.toFixed(1)));
+        tr.appendChild(td(e.fibre.toFixed(1)));
+        tr.appendChild(td(e.sugar.toFixed(1)));
+        tr.appendChild(td(e.goodFat.toFixed(1)));
+        tr.appendChild(td(e.badFat.toFixed(1)));
+
+        const actTd = document.createElement("td");
+        actTd.className = "entry-actions";
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "✕";
+        delBtn.title = "Delete";
+        delBtn.addEventListener("click", () => {
+          const ents = loadEntriesForDate(dateStr);
+          ents.splice(i, 1);
+          saveEntriesForDate(dateStr, ents);
+          renderEntries();
+        });
+        actTd.appendChild(delBtn);
+        tr.appendChild(actTd);
+
+        entriesTBody.appendChild(tr);
+
+        totals.calories += e.calories;
+        totals.protein  += e.protein;
+        totals.carbs    += e.carbs;
+        totals.fibre    += e.fibre;
+        totals.sugar    += e.sugar;
+        totals.goodFat  += e.goodFat;
+        totals.badFat   += e.badFat;
+      });
+
+      summaryDiv.textContent = entries.length
+        ? `Items: ${entries.length} · Calories: ${totals.calories.toFixed(0)} kcal`
+        : "No entries for this day.";
+
+      renderBars(totals);
+    }
+
+    addBtn.addEventListener("click", () => {
+      const dateStr = getCurrentDate();
+      const food = getSelectedFood();
+      const amt = parseFloat(amountInput.value) || 0;
+      if (!food || amt <= 0) return;
+
+      const entries = loadEntriesForDate(dateStr);
+      const scale = v => v * amt;
+
+      const entry = {
+        name: food.name,
+        unit: food.unit,
+        amount: amt,
+        calories: scale(food.calories),
+        protein: scale(food.protein),
+        carbs: scale(food.carbs),
+        fibre: scale(food.fibre),
+        sugar: scale(food.sugar),
+        goodFat: scale(food.goodFat),
+        badFat: scale(food.badFat)
+      };
+
+      entries.push(entry);
+      saveEntriesForDate(dateStr, entries);
+      renderEntries();
+    });
+
+    clearBtn.addEventListener("click", () => {
+      const dateStr = getCurrentDate();
+      if (!confirm("Clear all entries for this day?")) return;
+      const all = loadAllData();
+      delete all[dateStr];
+      saveAllData(all);
+      renderEntries();
+    });
+
+    dateInput.addEventListener("change", renderEntries);
+
+    renderEntries();
+  });
+</script>
+</body>
+</html>
